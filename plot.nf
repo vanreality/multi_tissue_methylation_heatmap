@@ -28,7 +28,7 @@ workflow {
             newLine: true,
             seed: "sample,bedgraph_file_path\n"
         ) { meta, bedgraph ->
-            def pubPath = "${params.output_dir}/${meta.id}/${bedgraph.getName()}"
+            def pubPath = "${params.output_dir}/calculate/${bedgraph.getName()}"
             "${meta.id},${pubPath}"
         }
 
