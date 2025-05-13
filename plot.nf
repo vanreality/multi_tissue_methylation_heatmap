@@ -28,7 +28,8 @@ workflow {
             newLine: true,
             seed: "sample,bedgraph_file_path\n"
         ) { meta, bedgraph ->
-            "${meta.id},${bedgraph.absolutePath}"
+            def pubPath = "${params.outdir}/${meta.id}/${bedgraph.getName()}"
+            "${meta.id},${pubPath}"
         }
 
     // Generate methylation matrix from the collected results
