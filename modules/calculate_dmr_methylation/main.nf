@@ -6,13 +6,13 @@ process CALCULATE_DMR_METHYLATION {
     path script
 
     output:
-    tuple val(meta), path("*.bedGraph"), emit: bedgraph
+    tuple val(meta), path("*_DMR.bedGraph"), emit: bedgraph
 
     script:
     def prefix = task.ext.prefix ?: "${meta.id}"
     """
     python3 ${script} \\
         --bedgraph ${bedgraph} \\
-        --output ${prefix}.bedGraph
+        --output ${prefix}_DMR.bedGraph
     """
 }

@@ -2,3 +2,5 @@ results/
 scripts/
 data/
 .nextflow*
+work/
+images/
