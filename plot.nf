@@ -36,6 +36,7 @@ workflow {
     GENERATE_METHYLATION_MATRIX(
         [id: 'methylation_matrix'], 
         ch_bedgraph_list,
+        params.input_bed,
         file("${workflow.projectDir}/bin/generate_methylation_matrix.py")
     )
 }

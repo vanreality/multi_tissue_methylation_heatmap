@@ -4,6 +4,7 @@ process GENERATE_METHYLATION_MATRIX {
     input:
     val meta
     path bedgraph_list
+    path bed
     path script
 
     output:
@@ -14,6 +15,7 @@ process GENERATE_METHYLATION_MATRIX {
     """
     python3 ${script} \\
         --bedgraph_list ${bedgraph_list} \\
+        --bed ${bed} \\
         --output ${prefix}.tsv
     """
 }

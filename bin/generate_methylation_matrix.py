@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""
-Generate methylation matrix from multiple bedgraph files.
 
-This script reads a CSV file that contains sample names and paths to bedgraph files,
-combines the methylation data into a single matrix, and outputs it as a TSV file.
+"""
+Generate a methylation matrix from bedGraph files.
+
+This script merges multiple bedGraph files based on genomic regions from a BED file
+and creates a consolidated methylation rate matrix.
 """
 
 import os
@@ -12,133 +13,106 @@ import pandas as pd
 import click
 from rich.console import Console
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from tqdm import tqdm
 
 console = Console()
 
 @click.command()
-@click.option('--bedgraph_list', type=click.Path(exists=True, file_okay=True, dir_okay=False, readable=True))
-@click.option('--output', type=click.Path(file_okay=True, dir_okay=False, writable=True))
-@click.option('--chunk-size', default=100000, help='Number of rows to process at once for large files.')
-@click.option('--verbose', is_flag=True, help='Display detailed processing information.')
-def generate_matrix(bedgraph_list, output, chunk_size, verbose):
+@click.option('--bedgraph_list', required=True, help='CSV file with columns: sample,bedgraph_file_path')
+@click.option('--bed', required=True, help='BED file with genomic regions')
+@click.option('--output', required=True, help='Output file name')
+def generate_methylation_matrix(bedgraph_list, bed, output):
     """
-    Generate a methylation matrix from multiple bedgraph files.
+    Generate a methylation rate matrix from multiple bedGraph files.
     
-    BEDGRAPH_LIST: CSV file with columns 'sample' and 'bedgraph_file_path'
-    
-    OUTPUT: Path to save the resulting methylation matrix in TSV format
+    Args:
+        bedgraph_list: Path to CSV file containing sample names and bedGraph file paths.
+        bed: Path to BED file containing genomic regions of interest.
+        output: Path to output file for the methylation matrix.
     """
     try:
-        # Read input CSV file
-        console.print(Panel(f"[bold green]Reading input CSV: {bedgraph_list}[/]"))
-        samples_df = pd.read_csv(bedgraph_list)
+        # Check if input files exist
+        for file_path in [bedgraph_list, bed]:
+            if not os.path.exists(file_path):
+                console.print(Panel(f"[bold red]Error: File not found: {file_path}[/bold red]"))
+                sys.exit(1)
         
-        # Validate input columns
-        required_columns = ['sample', 'bedgraph_file_path']
-        missing_columns = [col for col in required_columns if col not in samples_df.columns]
-        if missing_columns:
-            console.print(f"[bold red]Error: Missing required columns in input CSV: {', '.join(missing_columns)}[/]")
+        # Read the BED file
+        console.print("[bold blue]Reading BED file...[/bold blue]")
+        try:
+            bed_df = pd.read_csv(bed, sep='\t', header=None, usecols=[0, 1, 2])
+            bed_df.columns = ['chr', 'start', 'end']
+        except Exception as e:
+            console.print(Panel(f"[bold red]Error reading BED file: {str(e)}[/bold red]"))
             sys.exit(1)
         
-        # Validate bedgraph file paths
-        invalid_paths = []
-        for idx, row in samples_df.iterrows():
-            if not os.path.isfile(row['bedgraph_file_path']):
-                invalid_paths.append(f"Sample {row['sample']}: {row['bedgraph_file_path']}")
-        
-        if invalid_paths:
-            console.print("[bold red]Error: The following bedgraph files do not exist:[/]")
-            for path in invalid_paths:
-                console.print(f"  - {path}")
+        # Read the bedgraph list file
+        console.print("[bold blue]Reading bedGraph list file...[/bold blue]")
+        try:
+            bedgraph_list_df = pd.read_csv(bedgraph_list)
+            if 'sample' not in bedgraph_list_df.columns or 'bedgraph_file_path' not in bedgraph_list_df.columns:
+                console.print(Panel("[bold red]Error: bedgraph_list must have 'sample' and 'bedgraph_file_path' columns[/bold red]"))
+                sys.exit(1)
+        except Exception as e:
+            console.print(Panel(f"[bold red]Error reading bedGraph list file: {str(e)}[/bold red]"))
             sys.exit(1)
         
-        # Process bedgraph files to build the matrix
-        console.print(Panel("[bold blue]Processing bedgraph files...[/]"))
+        # Initialize merged_df with the bed_df
+        merged_df = bed_df.copy()
         
-        # First pass: collect all unique genomic positions
-        all_positions = set()
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TaskProgressColumn()
-        ) as progress:
-            task = progress.add_task("[cyan]Collecting genomic positions...", total=len(samples_df))
+        # Process each bedGraph file
+        console.print("[bold blue]Processing bedGraph files...[/bold blue]")
+        for _, row in tqdm(bedgraph_list_df.iterrows(), total=len(bedgraph_list_df), desc="Processing samples"):
+            sample = row['sample']
+            bedgraph_path = row['bedgraph_file_path']
             
-            for idx, row in samples_df.iterrows():
-                sample = row['sample']
-                bedgraph_path = row['bedgraph_file_path']
-                
-                if verbose:
-                    console.print(f"Processing {sample}: {bedgraph_path}")
-                
-                # Read bedgraph in chunks to handle large files
-                for chunk in pd.read_csv(bedgraph_path, sep='\t', header=None, 
-                                        names=['chr', 'start', 'end', 'meth_rate'],
-                                        chunksize=chunk_size):
-                    # Create position tuples and add to set
-                    positions = set(zip(chunk['chr'], chunk['start'], chunk['end']))
-                    all_positions.update(positions)
-                
-                progress.update(task, advance=1)
-        
-        console.print(f"[green]Found {len(all_positions):,} unique genomic positions.[/]")
-        
-        # Convert positions set to DataFrame for the matrix index
-        positions_list = list(all_positions)
-        positions_df = pd.DataFrame(positions_list, columns=['chr', 'start', 'end'])
-        
-        # Sort by chromosome and position
-        positions_df = positions_df.sort_values(['chr', 'start', 'end'])
-        
-        # Create the matrix with the positions as index
-        matrix = positions_df.copy()
-        
-        # Second pass: fill in methylation rates for each sample
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TaskProgressColumn()
-        ) as progress:
-            task = progress.add_task("[cyan]Building methylation matrix...", total=len(samples_df))
+            if not os.path.exists(bedgraph_path):
+                console.print(f"[yellow]Warning: bedGraph file not found: {bedgraph_path}. Skipping sample {sample}.[/yellow]")
+                continue
             
-            for idx, row in samples_df.iterrows():
-                sample = row['sample']
-                bedgraph_path = row['bedgraph_file_path']
+            try:
+                # Read bedGraph file
+                bg_df = pd.read_csv(bedgraph_path, sep='\t', header=None, usecols=[0, 1, 2, 3])
+                bg_df.columns = ['chr', 'start', 'end', 'meth_rate']
                 
-                if verbose:
-                    console.print(f"Adding methylation data for {sample}")
-                
-                # Read bedgraph file
-                bedgraph_df = pd.read_csv(bedgraph_path, sep='\t', header=None, 
-                                        names=['chr', 'start', 'end', 'meth_rate'])
-                
-                # Create a lookup dictionary for faster access
-                meth_dict = {(chrom, start, end): rate for chrom, start, end, rate 
-                            in zip(bedgraph_df['chr'], bedgraph_df['start'], 
-                                bedgraph_df['end'], bedgraph_df['meth_rate'])}
-                
-                # Add methylation rates to the matrix
-                matrix[sample] = matrix.apply(
-                    lambda row: meth_dict.get((row['chr'], row['start'], row['end']), float('nan')), 
-                    axis=1
+                # Merge with bed_df
+                # For bedGraph, we need exact matches on chr, start, and end
+                sample_df = pd.merge(
+                    bed_df, 
+                    bg_df, 
+                    on=['chr', 'start', 'end'],
+                    how='left'
                 )
                 
-                progress.update(task, advance=1)
+                # Rename the meth_rate column to the sample name
+                sample_df.rename(columns={'meth_rate': sample}, inplace=True)
+                
+                # Merge with the main dataframe
+                if len(merged_df.columns) == 3:  # Only has chr, start, end
+                    merged_df = sample_df
+                else:
+                    merged_df = pd.merge(
+                        merged_df,
+                        sample_df[['chr', 'start', 'end', sample]],
+                        on=['chr', 'start', 'end'],
+                        how='outer'
+                    )
+            except Exception as e:
+                console.print(f"[yellow]Error processing {bedgraph_path} for sample {sample}: {str(e)}. Skipping this sample.[/yellow]")
+                continue
         
-        # Save the matrix to TSV file
-        console.print(Panel(f"[bold green]Saving methylation matrix to: {output}[/]"))
-        matrix.to_csv(output, sep='\t', index=False, na_rep='NA')
-        console.print(f"[bold green]✓[/] Successfully generated methylation matrix with dimensions: {matrix.shape}")
-        
+        # Write the merged matrix to file
+        console.print("[bold blue]Writing output file...[/bold blue]")
+        try:
+            merged_df.to_csv(output, sep='\t', index=False, na_rep='NA')
+            console.print(f"[bold green]Methylation matrix successfully written to {output}[/bold green]")
+        except Exception as e:
+            console.print(Panel(f"[bold red]Error writing output file: {str(e)}[/bold red]"))
+            sys.exit(1)
+            
     except Exception as e:
-        console.print(f"[bold red]Error: {str(e)}[/]")
-        if verbose:
-            console.print_exception()
+        console.print(Panel(f"[bold red]Unexpected error: {str(e)}[/bold red]"))
         sys.exit(1)
 
 if __name__ == "__main__":
-    generate_matrix()
+    generate_methylation_matrix()
