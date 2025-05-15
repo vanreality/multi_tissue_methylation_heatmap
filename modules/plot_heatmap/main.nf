@@ -14,7 +14,7 @@ process PLOT_HEATMAP {
     """
     python3 ${script} \\
         --input ${methylation_matrix} \\
-        --output ${prefix}.pdf \\
+        --output-plot ${prefix}.pdf \\
         ${args}
     """
 }
