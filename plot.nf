@@ -1,6 +1,7 @@
 include { BEDTOOLS_EXTRACT_SITES } from './modules/bedtools_extract_sites/main.nf'
 include { CALCULATE_DMR_METHYLATION } from './modules/calculate_dmr_methylation/main.nf'
 include { GENERATE_METHYLATION_MATRIX } from './modules/generate_methylation_matrix/main.nf'
+include { PLOT_HEATMAP } from './modules/plot_heatmap/main.nf'
 
 workflow {
     // Read input CSV file and create a channel with sample ID and bedgraph file path
@@ -38,6 +39,11 @@ workflow {
         ch_bedgraph_list,
         params.input_bed,
         file("${workflow.projectDir}/bin/generate_methylation_matrix.py")
+    )
+
+    PLOT_HEATMAP(
+        GENERATE_METHYLATION_MATRIX.out,
+        file("${workflow.projectDir}/bin/plot_heatmap.py")
     )
 }
 

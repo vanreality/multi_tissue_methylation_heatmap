@@ -10,9 +10,11 @@ process PLOT_HEATMAP {
 
     script:
     def prefix = task.ext.prefix ?: "${meta.id}"
+    def args = task.ext.args ?: ""
     """
     python3 ${script} \\
-        --methylation_matrix ${methylation_matrix} \\
-        --output ${prefix}
+        --input ${methylation_matrix} \\
+        --output ${prefix}.pdf \\
+        ${args}
     """
 }
