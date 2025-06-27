@@ -19,6 +19,7 @@ workflow {
     // Pass the channel to CALCULATE_DMR_METHYLATION process
     CALCULATE_DMR_METHYLATION(
         BEDTOOLS_EXTRACT_SITES.out, 
+        params.mode,
         file("${workflow.projectDir}/bin/calculate_dmr_methylation.py")
     )
 

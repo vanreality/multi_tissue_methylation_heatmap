@@ -3,6 +3,7 @@ process CALCULATE_DMR_METHYLATION {
     
     input:
     tuple val(meta), path(bedgraph)
+    val(mode)
     path script
 
     output:
@@ -13,6 +14,7 @@ process CALCULATE_DMR_METHYLATION {
     """
     python3 ${script} \\
         --bedgraph ${bedgraph} \\
-        --output ${prefix}_DMR.bedGraph
+        --output ${prefix}_DMR.bedGraph \\
+        --mode ${mode}
     """
 }
